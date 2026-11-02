@@ -12,6 +12,16 @@ GRAY="#91A2B5"
 GRID="#E7ECF3"
 FONT="#26394F"
 
+# Consistent outcome colors for the 100% stacked transaction chart and its key.
+OUTCOME_COLORS = {
+    "Loan Originated": "#177E88",
+    "Approved, Not Accepted": "#8193AD",
+    "Application Denied": "#D27B50",
+    "Withdrawn by Applicant": "#8A7DB2",
+    "File Closed for Incompleteness": "#C29A4F",
+    "Purchased Loan": "#326A9D",
+}
+
 def wrap_label(text, width=20):
     # Plotly supports HTML breaks, which prevent long tick labels from being clipped.
     return "<br>".join(textwrap.wrap(str(text), width=width, break_long_words=False, break_on_hyphens=False)) or str(text)
@@ -29,6 +39,106 @@ def style_chart(fig, height=350, margin=None):
                      tickfont=dict(size=11),automargin=True)
     fig.update_yaxes(showgrid=False,zeroline=False,linecolor=GRID,tickfont=dict(size=11),
                      automargin=True)
+    return fig
+
+
+def outcome_stacked_chart(table):
+    """A single 100% horizontal bar showing how all reported outcomes add up."""
+    t = table[table["Count"] > 0].copy()
+    if t.empty:
+        return go.Figure()
+    fig = go.Figure()
+    for _, row in t.iterrows():
+        outcome = str(row["Outcome"])
+        share = float(row["Share"])
+        count = int(row["Count"])
+        fig.add_trace(go.Bar(
+            name=outcome,
+            x=[share * 100],
+            y=["All transactions"],
+            orientation="h",
+            marker=dict(color=OUTCOME_COLORS.get(outcome, GRAY), line=dict(color="white",width=1.2)),
+            width=0.56,
+            text=[f"{share:.0%}" if share >= 0.10 else ""],
+            textposition="inside",
+            insidetextanchor="middle",
+            textfont=dict(size=12,color="white"),
+            hovertemplate=(
+                f"<b>{outcome}</b><br>"
+                f"Records: {count:,}<br>"
+                f"Share: {share:.2%}<extra></extra>"
+            ),
+        ))
+    style_chart(fig, height=155, margin=dict(l=13,r=14,t=5,b=28))
+    fig.update_layout(
+        barmode="stack",
+        showlegend=False, bargap=0.25,
+        uniformtext=dict(minsize=11,mode="hide"),
+    )
+    fig.update_xaxes(
+        range=[0,100],
+        tickmode="array",
+        tickvals=[0,25,50,75,100],
+        ticktext=["0%","25%","50%","75%","100%"],
+        showgrid=False,
+        linecolor=GRID,
+        tickfont=dict(size=11),
+        fixedrange=True,
+    )
+    fig.update_yaxes(visible=False,fixedrange=True)
+    return fig
+
+def race_dot_chart(table, overall=None):
+    """A dot plot for observed group denial percentages and group sizes."""
+    t = table.copy().sort_values("Rate", ascending=True)
+    if t.empty:
+        return go.Figure()
+    labels = t["Race"].astype(str).tolist()
+    rates = (t["Rate"].astype(float)*100).tolist()
+    decisions = t["Decisions"].astype(int).tolist()
+    denied = t["Denied"].astype(int).tolist()
+    upper = max(35, min(105, max(rates)+12))
+    fig = go.Figure(go.Scatter(
+        x=rates,
+        y=labels,
+        mode="markers+text",
+        marker=dict(size=15,color=TEAL,line=dict(width=2,color="white")),
+        text=[f"{v:.1f}%" for v in rates],
+        textposition=["middle left" if v>upper-13 else "middle right" for v in rates],
+        textfont=dict(size=12,color=NAVY),
+        customdata=np.column_stack([decisions,denied]),
+        hovertemplate=(
+            "<b>%{y}</b><br>Denial rate: %{x:.2f}%"
+            "<br>Credit decisions: %{customdata[0]:,}"
+            "<br>Denied: %{customdata[1]:,}<extra></extra>"
+        ),
+        cliponaxis=False,
+    ))
+    style_chart(
+        fig,
+        height=max(315, len(t)*55+110),
+        margin=dict(l=16,r=47,t=24,b=38),
+    )
+    fig.update_xaxes(
+        title="Observed denial rate",
+        range=[0,upper],
+        ticksuffix="%",
+        dtick=10 if upper<=55 else 20,
+        showgrid=True,
+        gridcolor=GRID,
+        fixedrange=True,
+    )
+    fig.update_yaxes(
+        tickmode="array",
+        tickvals=labels,
+        ticktext=[wrap_label(x,32) for x in labels],
+        categoryorder="array",
+        categoryarray=labels,
+        showgrid=False,
+        fixedrange=True,
+    )
+    if overall is not None:
+        fig.add_vline(x=overall*100,line_width=1.5,line_dash="dot",line_color=ORANGE)
     return fig
 
 def horizontal_counts(table, label_col, color=TEAL, height=355, max_ticks=18):
