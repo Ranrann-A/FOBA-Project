@@ -1,0 +1,13 @@
+Model,Actual,Predicted,Count
+Majority-Class Baseline,Approved,Approved,1891
+Majority-Class Baseline,Approved,Denied,0
+Majority-Class Baseline,Denied,Approved,343
+Majority-Class Baseline,Denied,Denied,0
+Logistic Regression,Approved,Approved,1697
+Logistic Regression,Approved,Denied,194
+Logistic Regression,Denied,Approved,133
+Logistic Regression,Denied,Denied,210
+Random Forest,Approved,Approved,1748
+Random Forest,Approved,Denied,143
+Random Forest,Denied,Approved,138
+Random Forest,Denied,Denied,205
