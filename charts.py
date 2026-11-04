@@ -1,5 +1,6 @@
 """Consistent, responsive Plotly charts for the HMDA Streamlit app."""
 import textwrap
+import math
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -12,7 +13,7 @@ GRAY="#91A2B5"
 GRID="#E7ECF3"
 FONT="#26394F"
 
-# Consistent outcome colors for the 100% stacked transaction chart and its key.
+# Each action-taken group keeps the same color in the transaction breakdown.
 OUTCOME_COLORS = {
     "Loan Originated": "#177E88",
     "Approved, Not Accepted": "#8193AD",
@@ -39,106 +40,6 @@ def style_chart(fig, height=350, margin=None):
                      tickfont=dict(size=11),automargin=True)
     fig.update_yaxes(showgrid=False,zeroline=False,linecolor=GRID,tickfont=dict(size=11),
                      automargin=True)
-    return fig
-
-
-def outcome_stacked_chart(table):
-    """A single 100% horizontal bar showing how all reported outcomes add up."""
-    t = table[table["Count"] > 0].copy()
-    if t.empty:
-        return go.Figure()
-    fig = go.Figure()
-    for _, row in t.iterrows():
-        outcome = str(row["Outcome"])
-        share = float(row["Share"])
-        count = int(row["Count"])
-        fig.add_trace(go.Bar(
-            name=outcome,
-            x=[share * 100],
-            y=["All transactions"],
-            orientation="h",
-            marker=dict(color=OUTCOME_COLORS.get(outcome, GRAY), line=dict(color="white",width=1.2)),
-            width=0.56,
-            text=[f"{share:.0%}" if share >= 0.10 else ""],
-            textposition="inside",
-            insidetextanchor="middle",
-            textfont=dict(size=12,color="white"),
-            hovertemplate=(
-                f"<b>{outcome}</b><br>"
-                f"Records: {count:,}<br>"
-                f"Share: {share:.2%}<extra></extra>"
-            ),
-        ))
-    style_chart(fig, height=155, margin=dict(l=13,r=14,t=5,b=28))
-    fig.update_layout(
-        barmode="stack",
-        showlegend=False, bargap=0.25,
-        uniformtext=dict(minsize=11,mode="hide"),
-    )
-    fig.update_xaxes(
-        range=[0,100],
-        tickmode="array",
-        tickvals=[0,25,50,75,100],
-        ticktext=["0%","25%","50%","75%","100%"],
-        showgrid=False,
-        linecolor=GRID,
-        tickfont=dict(size=11),
-        fixedrange=True,
-    )
-    fig.update_yaxes(visible=False,fixedrange=True)
-    return fig
-
-def race_dot_chart(table, overall=None):
-    """A dot plot for observed group denial percentages and group sizes."""
-    t = table.copy().sort_values("Rate", ascending=True)
-    if t.empty:
-        return go.Figure()
-    labels = t["Race"].astype(str).tolist()
-    rates = (t["Rate"].astype(float)*100).tolist()
-    decisions = t["Decisions"].astype(int).tolist()
-    denied = t["Denied"].astype(int).tolist()
-    upper = max(35, min(105, max(rates)+12))
-    fig = go.Figure(go.Scatter(
-        x=rates,
-        y=labels,
-        mode="markers+text",
-        marker=dict(size=15,color=TEAL,line=dict(width=2,color="white")),
-        text=[f"{v:.1f}%" for v in rates],
-        textposition=["middle left" if v>upper-13 else "middle right" for v in rates],
-        textfont=dict(size=12,color=NAVY),
-        customdata=np.column_stack([decisions,denied]),
-        hovertemplate=(
-            "<b>%{y}</b><br>Denial rate: %{x:.2f}%"
-            "<br>Credit decisions: %{customdata[0]:,}"
-            "<br>Denied: %{customdata[1]:,}<extra></extra>"
-        ),
-        cliponaxis=False,
-    ))
-    style_chart(
-        fig,
-        height=max(315, len(t)*55+110),
-        margin=dict(l=16,r=47,t=24,b=38),
-    )
-    fig.update_xaxes(
-        title="Observed denial rate",
-        range=[0,upper],
-        ticksuffix="%",
-        dtick=10 if upper<=55 else 20,
-        showgrid=True,
-        gridcolor=GRID,
-        fixedrange=True,
-    )
-    fig.update_yaxes(
-        tickmode="array",
-        tickvals=labels,
-        ticktext=[wrap_label(x,32) for x in labels],
-        categoryorder="array",
-        categoryarray=labels,
-        showgrid=False,
-        fixedrange=True,
-    )
-    if overall is not None:
-        fig.add_vline(x=overall*100,line_width=1.5,line_dash="dot",line_color=ORANGE)
     return fig
 
 def horizontal_counts(table, label_col, color=TEAL, height=355, max_ticks=18):
@@ -283,4 +184,87 @@ def importance_chart(feature_table, top=9):
     style_chart(fig,height=max(310,40*len(t)+72),margin=dict(l=18,r=20,t=24,b=35))
     fig.update_yaxes(tickmode="array",tickvals=t["name"],ticktext=[wrap_label(x,24) for x in t["name"]])
     fig.update_xaxes(title="Average-precision decrease when shuffled",tickformat=".2f",zeroline=True,zerolinecolor=GRID)
+    return fig
+
+
+def outcome_stacked_chart(table):
+    """Share of all selected HMDA transactions, displayed in a single 100% bar."""
+    t = table.loc[table["Count"].gt(0), ["Outcome", "Count", "Share"]].copy()
+    fig = go.Figure()
+    if t.empty:
+        return fig
+    for record in t.itertuples(index=False):
+        name, count, share = str(record.Outcome), int(record.Count), float(record.Share)
+        fig.add_trace(go.Bar(
+            x=[100 * share],
+            y=["Selected transactions"],
+            orientation="h",
+            name=name,
+            marker_color=OUTCOME_COLORS.get(name, GRAY),
+            text=[f"{share:.0%}" if share >= 0.12 else ""],
+            textposition="inside",
+            hovertemplate=(
+                f"<b>{name}</b><br>Records: {count:,}<br>"
+                f"Share: {share:.2%}<extra></extra>"
+            ),
+        ))
+    style_chart(fig, height=210, margin=dict(l=8, r=12, t=6, b=38))
+    fig.update_layout(barmode="stack", showlegend=False, bargap=0.28)
+    fig.update_xaxes(
+        range=[0, 100],
+        tickmode="array",
+        tickvals=[0, 25, 50, 75, 100],
+        ticktext=["0%", "25%", "50%", "75%", "100%"],
+        fixedrange=True,
+    )
+    fig.update_yaxes(visible=False, fixedrange=True)
+    return fig
+
+
+def race_dot_chart(table, overall=None):
+    """Dot comparison of observed denial percentages across race categories."""
+    t = table.sort_values("Rate", ascending=True)
+    fig = go.Figure()
+    if t.empty:
+        return fig
+    labels = t["Race"].astype(str).tolist()
+    rates = (100 * t["Rate"].astype(float)).tolist()
+    n = t["Decisions"].astype(int).tolist()
+    denied = t["Denied"].astype(int).tolist()
+    axis_upper = min(110, max(40, 10 * math.ceil((max(rates) + 15) / 10)))
+    fig.add_trace(go.Scatter(
+        x=rates,
+        y=labels,
+        mode="markers+text",
+        marker=dict(size=14, color=TEAL, line=dict(color="white", width=1)),
+        text=[f"{v:.1f}%" for v in rates],
+        textposition="middle right",
+        textfont=dict(color=NAVY, size=12),
+        customdata=np.column_stack((n, denied)),
+        hovertemplate=(
+            "<b>%{y}</b><br>Denial rate: %{x:.2f}%"
+            "<br>Decisions: %{customdata[0]:,}"
+            "<br>Denied: %{customdata[1]:,}<extra></extra>"
+        ),
+        cliponaxis=False,
+    ))
+    style_chart(fig, height=max(330, 60 * len(labels) + 90),
+                margin=dict(l=18, r=50, t=22, b=45))
+    fig.update_xaxes(range=[0, axis_upper], title="Observed denial rate",
+                     ticksuffix="%", fixedrange=True)
+    fig.update_yaxes(
+        tickmode="array",
+        tickvals=labels,
+        ticktext=[wrap_label(label, 30) for label in labels],
+        categoryorder="array",
+        categoryarray=labels,
+        fixedrange=True,
+    )
+    if overall is not None and pd.notna(overall):
+        x = 100 * float(overall)
+        fig.add_shape(
+            type="line", xref="x", yref="paper",
+            x0=x, x1=x, y0=0, y1=1,
+            line=dict(color=ORANGE, dash="dot", width=1.5),
+        )
     return fig

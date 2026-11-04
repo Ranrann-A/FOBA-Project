@@ -17,7 +17,7 @@ from data_logic import (
     race_table, validate_model_files
 )
 from charts import (
-    NAVY, TEAL, ORANGE, OUTCOME_COLORS, outcome_stacked_chart, race_dot_chart,
+    NAVY, TEAL, ORANGE, outcome_stacked_chart, race_dot_chart,
     horizontal_counts, purpose_chart, rate_chart,
     metrics_comparison_chart, confusion_chart, importance_chart,
 )
@@ -83,34 +83,6 @@ div[data-testid="stMetric"] { background:#FFFFFF; }
 .chart-heading {font-size:1.06rem;line-height:1.35;font-weight:800;
   color:#193852;margin-bottom:2px; overflow-wrap:anywhere;}
 .chart-caption {font-size:.83rem;color:#60738A;line-height:1.45;margin-bottom:7px;}
-
-.outcome-grid {
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:8px 12px;
-  margin:0 0 13px;
-}
-.outcome-entry {
-  display:flex;
-  align-items:flex-start;
-  gap:8px;
-  background:#F8FBFD;
-  border:1px solid #E7EDF3;
-  border-radius:9px;
-  padding:9px 10px;
-  min-width:0;
-}
-.outcome-swatch {
-  width:10px;height:10px;flex:0 0 10px;
-  border-radius:3px;margin-top:4px;
-}
-.outcome-details {min-width:0;flex:1;}
-.outcome-title {
-  font-size:.78rem;line-height:1.35;font-weight:700;color:#28425A;
-  overflow-wrap:break-word;
-}
-.outcome-stats {font-size:.73rem;line-height:1.45;color:#647A8F;overflow-wrap:break-word;}
-@media (max-width:450px) {.outcome-grid{grid-template-columns:repeat(1,minmax(0,1fr));}}
 .takeaway {background:#F0F6F8;border-left:3px solid #1D8590;border-radius:0 9px 9px 0;
   padding:11px 13px;color:#38546D;font-size:.86rem;line-height:1.55;
   white-space:normal;overflow-wrap:anywhere;}
@@ -175,23 +147,6 @@ def metric_html(label, value, foot):
 
 def chart_header(title, description):
     st.markdown(f'<div class="chart-heading">{html.escape(title)}</div><div class="chart-caption">{html.escape(description)}</div>',unsafe_allow_html=True)
-
-
-def outcome_breakdown(table):
-    """Readable legend for the stacked chart, including both count and percentage."""
-    items = []
-    for row in table.itertuples(index=False):
-        label = html.escape(str(row.Outcome))
-        color = OUTCOME_COLORS.get(str(row.Outcome), "#91A2B5")
-        items.append(
-            '<div class="outcome-entry">'
-            f'<span class="outcome-swatch" style="background:{color}"></span>'
-            '<div class="outcome-details">'
-            f'<div class="outcome-title">{label}</div>'
-            f'<div class="outcome-stats">{int(row.Count):,} records · {float(row.Share):.1%}</div>'
-            '</div></div>'
-        )
-    return '<div class="outcome-grid">' + "".join(items) + '</div>'
 
 def takeaway(message):
     st.markdown(f'<div class="takeaway">{html.escape(message)}</div>',unsafe_allow_html=True)
@@ -298,10 +253,11 @@ with tab_overview:
         c1,c2=st.columns(2,gap="medium")
         with c1:
             with st.container(border=True):
-                chart_header("Transaction Outcome Distribution","All filtered HMDA transactions · 100% stacked share of reported outcomes")
+                chart_header("Transaction Outcome Distribution","All filtered HMDA transactions · share of reported outcomes")
                 t=outcome_table(filtered)
                 show_plot(outcome_stacked_chart(t),key="outcomes")
-                st.markdown(outcome_breakdown(t),unsafe_allow_html=True)
+                with st.expander("See counts and percentages by outcome"):
+                    show_table(t,percent=["Share"])
                 takeaway(f"{s['purchased']:,} of the selected records were purchased loans. They contribute to the activity total but were not approved or denied by this reporting institution, so excluding them from decision rates prevents misleading comparisons.")
         with c2:
             with st.container(border=True):
@@ -349,7 +305,7 @@ with tab_overview:
 
         st.markdown('<div class="section-kicker">Applicant outcomes</div>',unsafe_allow_html=True)
         with st.container(border=True):
-            chart_header("Observed Denial Rate by Race","Dot plot · reported race groups with at least 30 filtered credit decisions")
+            chart_header("Observed Denial Rate by Race","Dot plot · race groups with at least 30 decisions under the selected filters")
             t_race=race_table(decisions,min_n=30)
             if t_race.empty:
                 st.info("No individual reported race category has at least 30 credit decisions with these filters. Broaden the filters to display this comparison.")
