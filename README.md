@@ -80,7 +80,7 @@ HMDA_Streamlit_Dashboard/
 
 1. Unzip the project into a directory.
 2. Open a terminal **in the directory containing `app.py`**.
-3. Install Python dependencies:
+3. Use **Python 3.12** for this pinned environment. Install Python dependencies:
    ```bash
    pip install -r requirements.txt
    ```
@@ -99,7 +99,8 @@ evaluation results are already in the `results/` folder.
    the folders `data/`, `results/`, and `.streamlit/`.
 2. Open [Streamlit Community Cloud](https://share.streamlit.io/), connect GitHub,
    and create an app from that repository.
-3. Set the main app file path to `app.py`.
+3. Set the main app file path to `app.py` and select **Python 3.12** in the deployment's advanced settings.
+   This set of pinned versions is intended for Python 3.12, not Python 3.14.
 4. Deploy and test the public URL in a private/incognito browser window.
 5. Check that all three filters work, the figures update correctly, and the
    Predictive Analysis tab still shows the same model evaluation metrics.
@@ -127,3 +128,35 @@ The public HMDA records do not include credit scores and other underwriting
 information. Models may learn historical underwriting patterns and their
 limitations. They must not be used to decide whether any individual receives
 a loan, and demographic differences are purely descriptive.
+
+
+## Stabilizing an existing Community Cloud deployment
+
+If you previously deployed with a different Python version (for example, 3.14)
+and broad dependency ranges, **do not update only `requirements.txt` and leave
+Python on 3.14**: the exact `numpy`/`pyarrow` versions above were chosen for
+Python 3.12.
+
+1. In GitHub, replace the root-level `app.py` and `requirements.txt` files.
+   `charts.py`, `data_logic.py`, the cleaned CSV, and all model-results CSVs stay unchanged.
+2. On Streamlit Community Cloud, check the deployed app's Python runtime.
+   Select **Python 3.12** if the app settings provide that control. Some existing
+   deployments require redeployment to change the Python version. If so, deploy
+   from the same GitHub repo/branch with Python 3.12; the new app's URL might differ.
+3. Reboot or redeploy, then check the newest Cloud logs show the pinned packages,
+   not `streamlit==1.66.1` or `plotly==6.9.0`.
+4. Open the app in an incognito window and verify both tabs. The native Streamlit
+   headings, notes, and KPI cards avoid raw `<div>` text if HTML handling changes.
+
+### If Plotly fails to load again
+
+A browser error mentioning `PlotlyChart...js` is a **frontend asset failure**.
+It is not proof that HMDA data calculations failed. Capture the app's exact URL,
+current Python and Streamlit versions from the matching Cloud logs, and the
+browser Console/Network error. If the problem continues even on the pinned
+Python 3.12 deployment, it may be a Streamlit Cloud/browser asset delivery problem
+that needs to be reported to Streamlit, not an error in the mortgage analysis.
+
+**Scope of this patch:** Deployment stability and text presentation only.
+The underlying descriptive counts, filters, chart calculations, and saved
+predictive-model results have not been modified.
