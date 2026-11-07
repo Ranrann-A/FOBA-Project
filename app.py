@@ -178,6 +178,18 @@ with tab_overview:
         ("Median Loan Amount",pretty_amount(s["median_loan"]),"All filtered records, incl. purchases"),
     ]
     display_kpis(cards)
+    if 0 < s["decisions"] < 30:
+        st.warning(
+            f"**Small sample: only {s['decisions']:,} credit decisions match these filters.** "
+            "The displayed denial rate and DTI percentages are mathematically correct for "
+            "these records, but can change substantially if just one decision changes. "
+            "Do not interpret them as a reliable county-wide or population-wide pattern."
+        )
+    elif s["decisions"] == 0 and s["records"] > 0:
+        st.info(
+            "This selection has no approved or denied credit decisions. "
+            "A denial rate cannot be calculated for it."
+        )
     st.caption(
         "Counts and percentages use different HMDA populations when appropriate. "
         "The median loan amount describes all currently filtered transactions, including purchased loans. "
@@ -207,7 +219,18 @@ with tab_overview:
                 else:
                     show_plot(purpose_chart(t_p),key="purpose")
                     top=t_p.iloc[0]
-                    takeaway(f"{top['Purpose']} makes up {top['Share']:.1%} of institution-processed applications in this selection. This identifies the main source of application activity for lending operations to monitor.")
+                    if len(processed) < 30:
+                        takeaway(
+                            f"{top['Purpose']} accounts for {top['Count']:,} of "
+                            f"{len(processed):,} processed applications ({top['Share']:.1%}) "
+                            "in this small selection. This should not be treated as a broad lending trend."
+                        )
+                    else:
+                        takeaway(
+                            f"{top['Purpose']} accounts for {top['Share']:.1%} of "
+                            "institution-processed applications in this selection, "
+                            "showing where reported application activity is concentrated."
+                        )
 
         st.subheader("Denial patterns")
         c3,c4=st.columns(2,gap="medium")
@@ -219,8 +242,40 @@ with tab_overview:
                     st.info("No denied applications match these filters.")
                 else:
                     show_plot(horizontal_counts(t_r,"Reason",height=435,max_ticks=21),key="reasons")
-                    top_reason=t_r.iloc[0]
-                    takeaway(f"{top_reason['Reason']} leads the reported primary reasons ({top_reason['Share']:.1%} of denied applications here). This can help managers prioritize which reported denial patterns to review; it does not prove that one factor independently caused the decision.")
+                    highest_count = int(t_r["Count"].max())
+                    top_reasons = t_r.loc[t_r["Count"] == highest_count, "Reason"].astype(str).tolist()
+                    highest_share = highest_count / len(denied)
+                    if len(top_reasons) == 1:
+                        if len(t_r) == 1:
+                            reason_message = (
+                                f"{top_reasons[0]} is the only reported primary reason "
+                                f"({highest_count:,} of {len(denied):,} denials)."
+                            )
+                        else:
+                            reason_message = (
+                                f"{top_reasons[0]} is the most common primary reason "
+                                f"({highest_count:,} of {len(denied):,} denials, {highest_share:.1%})."
+                            )
+                    elif len(top_reasons) == 2:
+                        reason_message = (
+                            f"{top_reasons[0]} and {top_reasons[1]} are tied as the most "
+                            f"frequent primary reasons ({highest_count:,} each, "
+                            f"{highest_share:.1%} of denials each)."
+                        )
+                    else:
+                        reason_message = (
+                            f"{len(top_reasons)} primary reasons are tied for the highest "
+                            f"count ({highest_count:,} each, {highest_share:.1%} of denials each)."
+                        )
+                    if len(denied) < 30:
+                        reason_message += (
+                            f" This selection contains only {len(denied):,} denials, "
+                            "so these shares are sensitive to small changes."
+                        )
+                    takeaway(
+                        reason_message +
+                        " Reported reasons can guide further review, but do not prove causation."
+                    )
 
         with c4:
             with st.container(border=True):
@@ -229,18 +284,40 @@ with tab_overview:
                 if t_d.empty:
                     st.info("No credit decisions match these filters.")
                 else:
-                    show_plot(rate_chart(t_d,"DTI",overall=s["denial_rate"],height=435),key="dti")
-                    high_dti=t_d[t_d.DTI.isin(["50%-60%",">60%"])]
-                    if not high_dti.empty:
-                        h=high_dti.sort_values("Rate",ascending=False).iloc[0]
-                        dti_takeaway=(f"The {h['DTI']} group has an observed denial rate of {h['Rate']:.1%} "
-                                      f"across {int(h['Decisions']):,} decisions. "
-                                      "This highlights a high-denial segment for closer review, not a causal relationship. ")
+                    show_plot(
+                        rate_chart(t_d, "DTI", overall=s["denial_rate"], height=435, threshold=30),
+                        key="dti"
+                    )
+                    low_sample_groups = t_d[t_d["Decisions"] < 30]
+                    if not low_sample_groups.empty:
+                        st.caption(
+                            f"**Small DTI groups:** {len(low_sample_groups)} of {len(t_d)} groups "
+                            "have fewer than 30 decisions (gray bars). Chart labels show "
+                            "**denied/decisions**; treat these percentages cautiously."
+                        )
+                    larger_groups = t_d[t_d["Decisions"] >= 30]
+                    if larger_groups.empty:
+                        dti_takeaway = (
+                            "Every displayed DTI group contains fewer than 30 decisions. "
+                            "The percentages describe this selection only and are too "
+                            "sensitive to individual records for broad comparisons. "
+                        )
                     else:
-                        dti_takeaway="Compare category rates to see where observed denials are concentrated. "
-                    takeaway(dti_takeaway+
-                        f"The dotted line is the overall filtered rate ({pretty_pct(s['denial_rate'])}); "
-                        "36–49% exact DTI values are grouped for readability.")
+                        h = larger_groups.sort_values(
+                            ["Rate", "Decisions"], ascending=[False, False]
+                        ).iloc[0]
+                        dti_takeaway = (
+                            f"Among DTI groups with at least 30 decisions, {h['DTI']} "
+                            f"has the highest observed denial rate ({h['Rate']:.1%}, "
+                            f"{int(h['Denied']):,} of {int(h['Decisions']):,}). "
+                            "This is a descriptive association, not proof of causation. "
+                        )
+                    takeaway(
+                        dti_takeaway +
+                        f"The dotted line shows the overall filtered rate "
+                        f"({pretty_pct(s['denial_rate'])}); exact DTI values from "
+                        "36% to 49% are grouped for readability."
+                    )
 
         st.subheader("Applicant outcomes")
         with st.container(border=True):

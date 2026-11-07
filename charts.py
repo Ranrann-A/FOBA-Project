@@ -84,15 +84,26 @@ def rate_chart(table, category, overall=None, height=420, threshold=None):
     if "Decisions" not in t.columns: raise ValueError("Rate chart needs decision counts.")
     values=t.Rate.to_numpy()*100
     colors=[(TEAL if (threshold is None or int(n)>=threshold) else GRAY) for n in t.Decisions]
+    # The text shows the actual denominator, so 100% from 1/1 is not mistaken
+    # for the same strength of evidence as 100% from a much larger group.
+    bar_labels = [
+        f"{float(rate):.1%} ({int(denied):,}/{int(n):,})"
+        for rate, denied, n in zip(t.Rate, t.Denied, t.Decisions)
+    ]
     fig=go.Figure(go.Bar(
         x=values, y=cats, orientation="h",marker_color=colors,
         customdata=np.stack([t.Decisions.to_numpy(),t.Denied.to_numpy()],axis=-1),
-        text=[f"{p:.1f}%" for p in values],textposition="outside",
+        text=bar_labels,textposition="outside",
         textfont=dict(size=11,color=NAVY),cliponaxis=False,
         hovertemplate="<b>%{y}</b><br>Denial rate: %{x:.2f}%<br>Decisions: %{customdata[0]:,}<br>Denied: %{customdata[1]:,}<extra></extra>",
     ))
-    style_chart(fig,max(height,len(t)*44+100), margin=dict(l=18,r=62,t=24,b=24))
-    fig.update_xaxes(title=None,range=[0,max(104.0, max(values,default=0)+8)],ticksuffix="%")
+    # Reserve room beyond the 100% end of the scale for the count labels.
+    style_chart(fig,max(height,len(t)*44+100), margin=dict(l=18,r=150,t=24,b=24))
+    fig.update_xaxes(
+        title=None,range=[0,103],tickmode="array",
+        tickvals=[0,25,50,75,100],
+        ticktext=["0%","25%","50%","75%","100%"]
+    )
     fig.update_yaxes(tickmode="array",tickvals=cats,ticktext=[wrap_label(c,21) for c in cats])
     if overall is not None:
         fig.add_vline(x=overall*100,line_width=1.5,line_dash="dot",line_color=ORANGE)
